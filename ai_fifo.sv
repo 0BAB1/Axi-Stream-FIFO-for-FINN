@@ -5,8 +5,8 @@
 
 // Made for the "PyTorch to FPGA" Course
 
-module  #(
-    parameter DEPTH = 64,
+module custom_fifo #(
+    parameter DEPTH = 8,
     parameter DATA_WIDTH = 8
 ) (
     // AXIS
@@ -21,12 +21,12 @@ module  #(
     // (MASTER) DMA Interface
     output wire m_axis_tvalid,
     output wire [DATA_WIDTH-1:0] m_axis_tdata,
-    output wire m_axis_tlast
+    output wire m_axis_tlast,
     input wire m_axis_tready
 );
     parameter PTR_WIDTH = $clog2(DEPTH);
 
-    logic [DATA_WIDTH-1:0] mem[Depth];
+    logic [DATA_WIDTH-1:0] mem[DEPTH];
     logic [PTR_WIDTH:0] wrPtr, wrPtrNext;
     logic [PTR_WIDTH:0] rdPtr, rdPtrNext;
 
@@ -57,10 +57,10 @@ module  #(
             rdPtr <= rdPtrNext;
         end
 
-        mem[wrPtr[PTR_WIDTH-1:0]] <= writeData;
+        mem[wrPtr[PTR_WIDTH-1:0]] <= s_axis_tdata;
     end
 
-    assign readData = mem[rdPtr[PTR_WIDTH-1:0]];
+    assign m_axis_tdata = mem[rdPtr[PTR_WIDTH-1:0]];
 
     // Check full, includes a wrapping check on pointers
     assign empty = (wrPtr[PTR_WIDTH] == rdPtr[PTR_WIDTH]) && (wrPtr[PTR_WIDTH-1:0] == rdPtr[PTR_WIDTH-1:0]);
@@ -68,7 +68,7 @@ module  #(
     
     // MASTER assign AXI T signals
     // M_TLAST
-    assign m_axis_tlast = (rdPtrNext == writePtr);
+    assign m_axis_tlast = (rdPtrNext == wrPtr) && (rdPtrNext != rdPtr);
     // M_TVALID
     assign m_axis_tvalid = ~empty;
 
