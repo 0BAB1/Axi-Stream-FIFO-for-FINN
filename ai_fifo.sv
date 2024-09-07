@@ -59,7 +59,7 @@ module custom_fifo #(
     
     // MASTER assign AXI T signals
     // M_TLAST
-    assign m_axis_tlast = (m_axis_tready && m_axis_tvalid) && ((wr_ptr + 1'b1) == rd_ptr);
+    assign m_axis_tlast = (m_axis_tready && m_axis_tvalid) && ((rd_ptr + 1'b1) == wr_ptr);
     // M_TVALID
     assign m_axis_tvalid = ~empty;
 
