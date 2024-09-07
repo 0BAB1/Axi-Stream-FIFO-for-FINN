@@ -25,7 +25,7 @@ module custom_fifo #(
     output wire m_axis_tlast,
     input wire m_axis_tready
 );
-    parameter PTR_WIDTH = $clog2(DEPTH);
+    localparam = PTR_WIDTH = $clog2(DEPTH);
 
     logic [IN_DATA_WIDTH-1:0] mem[DEPTH];
     logic [PTR_WIDTH:0] wr_ptr;
