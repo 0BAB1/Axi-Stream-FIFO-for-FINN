@@ -7,7 +7,8 @@
 
 module custom_fifo #(
     parameter DEPTH = 8,
-    parameter DATA_WIDTH = 8
+    parameter IN_DATA_WIDTH = 8,
+    parameter OUT_DATA_WIDTH = 32
 ) (
     // AXIS
     input wire clk,
@@ -15,60 +16,50 @@ module custom_fifo #(
 
     // (SLAVE) AI Model interface
     input wire s_axis_tvalid,
-    input wire [DATA_WIDTH-1:0] s_axis_tdata,
+    input wire [IN_DATA_WIDTH-1:0] s_axis_tdata,
     output wire s_axis_tready,
 
     // (MASTER) DMA Interface
     output wire m_axis_tvalid,
-    output wire [DATA_WIDTH-1:0] m_axis_tdata,
+    output wire [OUT_DATA_WIDTH-1:0] m_axis_tdata,
     output wire m_axis_tlast,
     input wire m_axis_tready
 );
     parameter PTR_WIDTH = $clog2(DEPTH);
 
-    logic [DATA_WIDTH-1:0] mem[DEPTH];
-    logic [PTR_WIDTH:0] wrPtr, wrPtrNext;
-    logic [PTR_WIDTH:0] rdPtr, rdPtrNext;
-
-    // Assign next pointer value
-    always_comb begin
-        wrPtrNext = wrPtr;
-        rdPtrNext = rdPtr;
-        // writePtr += 1 only if S_AXIS tready and tvalid handsake asserted
-        if (s_axis_tready && s_axis_tvalid) begin
-            wrPtrNext = wrPtr + 1;
-        end
-        // readPtr += 1 only if M_AXIS tready and tvalid handsake asserted
-        if (m_axis_tready && m_axis_tvalid) begin
-            rdPtrNext = rdPtr + 1;
-        end
-    end
+    logic [IN_DATA_WIDTH-1:0] mem[DEPTH];
+    logic [PTR_WIDTH:0] wr_ptr;
+    logic [PTR_WIDTH:0] rd_ptr;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            wrPtr <= '0;
-            rdPtr <= '0;
+            wr_ptr <= '0;
+            rd_ptr <= '0;
             // Initialize FIFO memory
             for (int i = 0; i < DEPTH; i++) begin
                 mem[i] <= '0;
             end
         end else begin
-            wrPtr <= wrPtrNext;
-            rdPtr <= rdPtrNext;
+            if (s_axis_tvalid && s_axis_tready) begin
+                mem[wr_ptr[PTR_WIDTH-1:0]] <= s_axis_tdata;
+                wr_ptr <= wr_ptr + 1;
+            end
+            if (m_axis_tready && m_axis_tvalid) begin
+                rd_ptr <= rd_ptr + 1;
+            end
         end
-
-        mem[wrPtr[PTR_WIDTH-1:0]] <= s_axis_tdata;
     end
 
-    assign m_axis_tdata = mem[rdPtr[PTR_WIDTH-1:0]];
+    // Fills the width difference with 0, this is to avoid weird DMA behavior that i DO NOT want to deal with
+    assign m_axis_tdata = {{(OUT_DATA_WIDTH-IN_DATA_WIDTH){1'b0}}, mem[rd_ptr[PTR_WIDTH-1:0]]};
 
     // Check full, includes a wrapping check on pointers
-    assign empty = (wrPtr[PTR_WIDTH] == rdPtr[PTR_WIDTH]) && (wrPtr[PTR_WIDTH-1:0] == rdPtr[PTR_WIDTH-1:0]);
-    assign full  = (wrPtr[PTR_WIDTH] != rdPtr[PTR_WIDTH]) && (wrPtr[PTR_WIDTH-1:0] == rdPtr[PTR_WIDTH-1:0]);
+    assign empty = (wr_ptr[PTR_WIDTH] == rd_ptr[PTR_WIDTH]) && (wr_ptr[PTR_WIDTH-1:0] == rd_ptr[PTR_WIDTH-1:0]);
+    assign full  = (wr_ptr[PTR_WIDTH] != rd_ptr[PTR_WIDTH]) && (wr_ptr[PTR_WIDTH-1:0] == rd_ptr[PTR_WIDTH-1:0]);
     
     // MASTER assign AXI T signals
     // M_TLAST
-    assign m_axis_tlast = (rdPtrNext == wrPtr) && (rdPtrNext != rdPtr);
+    assign m_axis_tlast = (m_axis_tready && m_axis_tvalid) && ((wr_ptr + 1'b1) == rd_ptr);
     // M_TVALID
     assign m_axis_tvalid = ~empty;
 
